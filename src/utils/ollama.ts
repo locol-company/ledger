@@ -32,12 +32,26 @@ export async function summarizeCategory(
 
 ${body}
 
-Write a concise daily summary with these sections:
-**What happened** — key discussions, updates, and decisions (bullet points)
-**Action items** — tasks or follow-ups explicitly or implicitly mentioned (bullet points, or "None" if absent)
-**Notable** — anything urgent or time-sensitive (bullet points, or "None" if absent)
+Write a concise daily summary using EXACTLY this format (no deviations):
 
-Be brief. Use bullet points. Do not repeat raw messages verbatim.`;
+**What happened**
+• bullet point
+• bullet point
+
+**Action items**
+• bullet point
+• (write "• None" if absent)
+
+**Notable**
+• bullet point
+• (write "• None" if absent)
+
+Rules:
+- Use "**bold**" for the three section headers exactly as shown above
+- Use "•" (bullet character) for every list item, never "-" or "#" or "##" or "###"
+- Never use markdown headings (#, ##, ###, ####)
+- Never add a date line or title — the embed already has one
+- Be brief and direct. Do not repeat raw messages verbatim.`;
 
   const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
     method: 'POST',
