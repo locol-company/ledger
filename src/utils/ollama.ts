@@ -52,7 +52,8 @@ Rules:
 - Use "**text**" (double asterisks) for the three section headers exactly as shown above
 - Use "•" (bullet character) for every list item, never "-" or any "#" headings
 - Never add a date line or title — the embed already has one
-- Do not repeat raw messages verbatim, but do not lose any information`;
+- Do not repeat raw messages verbatim, but do not lose any information
+- Language: write in Thai, but keep all proper nouns exactly as they appear in the source — person names, company names, product names, brand names, technical terms, and acronyms must stay in their original language and spelling (e.g. "SPAR6C", "Boymaxwell", "Cash Flow", "MADD", "L/C", "EXIM Bank" stay as-is)`;
 
   const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
     method: 'POST',
@@ -99,7 +100,8 @@ Rules:
 - Use "**text**" (double asterisks) for every project header exactly as shown
 - Use "•" for every bullet, never "-" or any "#" headings
 - Never add a date line or intro paragraph — start directly with the first project
-- Cover all projects, no matter how small their activity`;
+- Cover all projects, no matter how small their activity
+- Language: write in Thai, but keep all proper nouns exactly as they appear in the source — person names, company names, product names, brand names, technical terms, and acronyms must stay in their original language and spelling`;
 
   const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
     method: 'POST',
