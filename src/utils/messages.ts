@@ -84,14 +84,23 @@ export async function ensureSummaryChannel(
     (c): c is TextChannel =>
       c.type === ChannelType.GuildText && c.name === 'bot-summary',
   );
-  if (existing) return existing;
 
-  return category.guild.channels.create({
+  const channel = existing ?? await category.guild.channels.create({
     name: 'bot-summary',
     type: ChannelType.GuildText,
     parent: category.id,
     topic: 'Daily AI-generated summaries of activity in this category',
-  }) as Promise<TextChannel>;
+    position: 0,
+  }) as TextChannel;
+
+  // Keep it pinned to the top of the category after every summary
+  try {
+    await channel.setPosition(0);
+  } catch {
+    // Non-fatal — bot may lack Manage Channels; summary still posts
+  }
+
+  return channel;
 }
 
 function truncate(text: string, max: number): string {
