@@ -1,9 +1,11 @@
 import cron from 'node-cron';
-import { CategoryChannel, ChannelType, Client, EmbedBuilder, TextChannel } from 'discord.js';
-import { fetchCategoryMessages, ensureSummaryChannel } from './messages';
-import { summarizeCategory, ollamaModel } from './ollama';
+import { CategoryChannel, ChannelType, Client, EmbedBuilder, Guild, TextChannel } from 'discord.js';
+import { fetchCategoryMessages, ensureSummaryChannel, findOrCreateChannel } from './messages';
+import { summarizeCategory, summarizeMaster, ollamaModel } from './ollama';
 
 const SUMMARY_CRON = process.env.SUMMARY_CRON ?? '0 22 * * *';
+// Category name where the master cross-project summary is posted
+const MASTER_CATEGORY = (process.env.MASTER_CATEGORY ?? 'general').toLowerCase();
 const WINDOW_HOURS = 24;
 
 export function startScheduler(client: Client): void {
@@ -22,17 +24,45 @@ export async function runDailySummary(client: Client, hoursBack = WINDOW_HOURS):
   console.log(`[ledger] Running summary: ${since.toISOString()} → ${now.toISOString()}`);
 
   for (const [, guild] of client.guilds.cache) {
-    const categories = guild.channels.cache.filter(
-      (c): c is CategoryChannel => c.type === ChannelType.GuildCategory,
-    );
+    await runGuildSummary(guild, since, now);
+  }
+}
 
-    for (const [, category] of categories) {
-      try {
-        await summarizeAndPost(category, since, now);
-      } catch (err) {
-        console.error(`[ledger] Failed for category "${category.name}" in "${guild.name}":`, err);
-      }
+async function runGuildSummary(guild: Guild, since: Date, now: Date): Promise<void> {
+  const categories = guild.channels.cache.filter(
+    (c): c is CategoryChannel => c.type === ChannelType.GuildCategory,
+  );
+
+  // Separate master category from project categories
+  const masterCategory = categories.find(
+    (c) => c.name.toLowerCase() === MASTER_CATEGORY,
+  );
+  const projectCategories = categories.filter(
+    (c) => c.name.toLowerCase() !== MASTER_CATEGORY,
+  );
+
+  // Summarise each project category and collect results for the master
+  const projectSummaries: { name: string; summary: string }[] = [];
+
+  for (const [, category] of projectCategories) {
+    try {
+      const summary = await summarizeAndPost(category, since, now);
+      if (summary) projectSummaries.push({ name: category.name, summary });
+    } catch (err) {
+      console.error(`[ledger] Failed for category "${category.name}" in "${guild.name}":`, err);
     }
+  }
+
+  // Post master cross-project summary to the General category
+  if (projectSummaries.length === 0) {
+    console.log(`[ledger] No project activity — skipping master summary`);
+    return;
+  }
+
+  try {
+    await postMasterSummary(guild, masterCategory ?? null, projectSummaries, since, now);
+  } catch (err) {
+    console.error(`[ledger] Failed to post master summary in "${guild.name}":`, err);
   }
 }
 
@@ -40,13 +70,13 @@ async function summarizeAndPost(
   category: CategoryChannel,
   since: Date,
   now: Date,
-): Promise<void> {
+): Promise<string | null> {
   const channels = await fetchCategoryMessages(category, since, now);
   const totalMessages = channels.reduce((n, c) => n + c.messages.length, 0);
 
   if (totalMessages === 0) {
     console.log(`[ledger] No messages in "${category.name}" — skipping`);
-    return;
+    return null;
   }
 
   console.log(`[ledger] Summarizing "${category.name}": ${totalMessages} messages across ${channels.length} channels`);
@@ -54,13 +84,46 @@ async function summarizeAndPost(
   const summary = await summarizeCategory(category.name, channels, since, now);
   const summaryChannel = await ensureSummaryChannel(category.guild.client, category);
 
-  const embed = buildSummaryEmbed(category.name, channels, summary, since, now);
+  const embed = buildCategoryEmbed(category.name, channels, summary, since, now);
   await summaryChannel.send({ embeds: [embed] });
 
   console.log(`[ledger] Posted summary to #${summaryChannel.name} in "${category.name}"`);
+  return summary;
 }
 
-function buildSummaryEmbed(
+async function postMasterSummary(
+  guild: Guild,
+  masterCategory: CategoryChannel | null,
+  projects: { name: string; summary: string }[],
+  since: Date,
+  now: Date,
+): Promise<void> {
+  console.log(`[ledger] Generating master summary for ${projects.length} projects`);
+
+  const overview = await summarizeMaster(projects, since, now);
+
+  // Find or create #bot-summary in the General category (or as a top-level channel)
+  const targetChannel = await findOrCreateChannel(guild, masterCategory, 'bot-summary');
+
+  const fromStr = formatICT(since);
+  const toStr = formatICT(now);
+
+  const embed = new EmbedBuilder()
+    .setTitle('Daily Overview — All Projects')
+    .setDescription(overview.slice(0, 4000))
+    .setColor(0xfaa61a)
+    .addFields(
+      { name: 'Period', value: `${fromStr} → ${toStr} ICT`, inline: true },
+      { name: 'Projects', value: String(projects.length), inline: true },
+    )
+    .setFooter({ text: `Generated by Ledger · ${ollamaModel()}` })
+    .setTimestamp();
+
+  await targetChannel.send({ embeds: [embed] });
+  console.log(`[ledger] Posted master summary to #${targetChannel.name}`);
+}
+
+function buildCategoryEmbed(
   categoryName: string,
   channels: { channelName: string; messages: unknown[] }[],
   summary: string,

@@ -32,7 +32,7 @@ export async function summarizeCategory(
 
 ${body}
 
-Write a concise daily summary using EXACTLY this format (no deviations):
+Write a daily summary using EXACTLY this format (no deviations):
 
 **What happened**
 • bullet point
@@ -47,11 +47,60 @@ Write a concise daily summary using EXACTLY this format (no deviations):
 • (write "• None" if absent)
 
 Rules:
+- Cover EVERY distinct topic, decision, update, and action item mentioned — do not omit anything
+- If there are 10 things that happened, list all 10
 - Use "**bold**" for the three section headers exactly as shown above
 - Use "•" (bullet character) for every list item, never "-" or "#" or "##" or "###"
 - Never use markdown headings (#, ##, ###, ####)
 - Never add a date line or title — the embed already has one
-- Be brief and direct. Do not repeat raw messages verbatim.`;
+- Do not repeat raw messages verbatim, but do not lose any information`;
+
+  const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Ollama error: ${res.status} ${await res.text()}`);
+  }
+
+  const data = (await res.json()) as { response: string };
+  return data.response.trim();
+}
+
+export async function summarizeMaster(
+  projects: { name: string; summary: string }[],
+  fromTime: Date,
+  toTime: Date,
+): Promise<string> {
+  const fromStr = formatICT(fromTime);
+  const toStr = formatICT(toTime);
+
+  const body = projects
+    .map((p) => `### ${p.name}\n${p.summary}`)
+    .join('\n\n');
+
+  const prompt = `You are a project assistant writing a cross-project daily overview for an organisation (${fromStr} → ${toStr} ICT).
+
+Below are the individual summaries for each project category:
+
+${body}
+
+Write a brief cross-project overview using EXACTLY this format:
+
+One project per section. For each project write 2–4 bullet points that cover what happened, key decisions, and action items. Do not skip any project. Do not skip any significant point from the summaries above.
+
+**{Project Name}**
+• key point
+• key point
+
+Rules:
+- Replace {Project Name} with the actual category name in bold
+- Use "•" for every bullet, never "-" or "#"
+- Never use markdown headings (#, ##, ###, ####)
+- Never add a date line or intro paragraph — start directly with the first project
+- Cover all projects, no matter how small their activity`;
 
   const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
     method: 'POST',

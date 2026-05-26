@@ -3,6 +3,7 @@ import {
   ChannelType,
   Client,
   Collection,
+  Guild,
   Message,
   TextChannel,
 } from 'discord.js';
@@ -101,6 +102,33 @@ export async function ensureSummaryChannel(
   }
 
   return channel;
+}
+
+// Used for the master summary channel — works with or without a parent category
+export async function findOrCreateChannel(
+  guild: Guild,
+  category: CategoryChannel | null,
+  name: string,
+): Promise<TextChannel> {
+  // Look inside the category first, then guild-wide
+  const existing = (category?.children.cache ?? guild.channels.cache).find(
+    (c): c is TextChannel => c.type === ChannelType.GuildText && c.name === name,
+  );
+
+  if (existing) {
+    try { await existing.setPosition(0); } catch { /* non-fatal */ }
+    return existing;
+  }
+
+  const created = await guild.channels.create({
+    name,
+    type: ChannelType.GuildText,
+    ...(category ? { parent: category.id } : {}),
+    topic: 'Daily cross-project overview — all projects at a glance',
+    position: 0,
+  }) as TextChannel;
+
+  return created;
 }
 
 function truncate(text: string, max: number): string {
