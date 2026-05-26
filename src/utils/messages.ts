@@ -11,7 +11,8 @@ import {
 import { ChannelMessages } from './ollama';
 
 const MAX_MESSAGES_PER_CHANNEL = 300;
-const SKIP_CHANNEL_NAMES = ['general'];
+// Only skip the summary channel itself — all other channels (including #general) are read
+const SKIP_CHANNEL_NAMES = ['bot-summary'];
 
 export async function fetchCategoryMessages(
   category: CategoryChannel,
@@ -29,10 +30,6 @@ export async function fetchCategoryMessages(
       !SKIP_CHANNEL_NAMES.includes(c.name.toLowerCase()),
   );
 
-  // Debug: log all children regardless of type
-  category.children.cache.forEach((c) =>
-    console.log(`[ledger]   child: #${c.name} type=${c.type}`),
-  );
   console.log(`[ledger] "${category.name}": found ${textChannels.size} text channel(s)`);
 
   for (const [, channel] of textChannels) {
