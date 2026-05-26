@@ -34,24 +34,23 @@ ${body}
 
 Write a daily summary using EXACTLY this format (no deviations):
 
-## What happened
+**What happened**
 • bullet point
 • bullet point
 
-## Action items
+**Action items**
 • bullet point
 • (write "• None" if absent)
 
-## Notable
+**Notable**
 • bullet point
 • (write "• None" if absent)
 
 Rules:
 - Cover EVERY distinct topic, decision, update, and action item mentioned — do not omit anything
 - If there are 10 things that happened, list all 10
-- Use "## " (double hash + space) for the three section headers exactly as shown above
-- Use "•" (bullet character) for every list item
-- Never use ### or #### or **bold** for headers — only ## as shown
+- Use "**text**" (double asterisks) for the three section headers exactly as shown above
+- Use "•" (bullet character) for every list item, never "-" or any "#" headings
 - Never add a date line or title — the embed already has one
 - Do not repeat raw messages verbatim, but do not lose any information`;
 
@@ -91,15 +90,15 @@ Write a brief cross-project overview using EXACTLY this format:
 
 One project per section. For each project write 2–4 bullet points that cover what happened, key decisions, and action items. Do not skip any project. Do not skip any significant point from the summaries above.
 
-## {Project Name}
+**{Project Name}**
 • key point
 • key point
 
 Rules:
-- Replace {Project Name} with the actual category name
-- Use "## " (double hash + space) for every project header exactly as shown
-- Use "•" for every bullet, never "-" or ### or ####
-- Never add a date line or intro paragraph — start directly with the first project header
+- Replace {Project Name} with the actual category name in bold
+- Use "**text**" (double asterisks) for every project header exactly as shown
+- Use "•" for every bullet, never "-" or any "#" headings
+- Never add a date line or intro paragraph — start directly with the first project
 - Cover all projects, no matter how small their activity`;
 
   const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
