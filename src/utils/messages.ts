@@ -1,4 +1,5 @@
 import {
+  AnyThreadChannel,
   CategoryChannel,
   ChannelType,
   Client,
@@ -19,22 +20,38 @@ export async function fetchCategoryMessages(
 ): Promise<ChannelMessages[]> {
   const results: ChannelMessages[] = [];
 
+  // Refresh guild channel cache so children are up to date
+  await category.guild.channels.fetch();
+
   const textChannels = category.children.cache.filter(
     (c): c is TextChannel =>
       c.type === ChannelType.GuildText &&
       !SKIP_CHANNEL_NAMES.includes(c.name.toLowerCase()),
   );
 
+  console.log(`[ledger] "${category.name}": found ${textChannels.size} text channel(s)`);
+
   for (const [, channel] of textChannels) {
-    const msgs = await fetchMessagesInRange(channel, since, before);
+    // Main channel messages
+    const mainMsgs = await fetchMessagesInRange(channel, since, before);
+
+    // Thread messages (active + recently archived)
+    const threadMsgs = await fetchThreadMessages(channel, since, before);
+
+    const all = [...mainMsgs, ...threadMsgs].sort(
+      (a, b) => a.createdTimestamp - b.createdTimestamp,
+    );
+
     results.push({
       channelName: channel.name,
-      messages: msgs.map((m) => ({
+      messages: all.map((m) => ({
         author: m.author.username,
         content: truncate(m.content, 500),
         timestamp: formatTime(m.createdAt),
       })),
     });
+
+    console.log(`[ledger]   #${channel.name}: ${mainMsgs.length} main + ${threadMsgs.length} thread messages`);
   }
 
   return results;
@@ -77,10 +94,45 @@ async function fetchMessagesInRange(
   return collected.reverse();
 }
 
+async function fetchThreadMessages(
+  channel: TextChannel,
+  since: Date,
+  before: Date,
+): Promise<Message[]> {
+  const collected: Message[] = [];
+
+  // Gather active + archived threads
+  const threads: AnyThreadChannel[] = [];
+
+  try {
+    const active = await channel.threads.fetchActive();
+    threads.push(...active.threads.values());
+  } catch { /* no permission or no threads */ }
+
+  try {
+    const archived = await channel.threads.fetchArchived({ limit: 20 });
+    for (const t of archived.threads.values()) {
+      // Only include threads that were active within our window
+      if (t.archiveTimestamp && t.archiveTimestamp >= since.getTime()) {
+        threads.push(t);
+      }
+    }
+  } catch { /* no permission or no threads */ }
+
+  for (const thread of threads) {
+    const msgs = await fetchMessagesInRange(thread as unknown as TextChannel, since, before);
+    collected.push(...msgs);
+  }
+
+  return collected;
+}
+
 export async function ensureSummaryChannel(
   client: Client,
   category: CategoryChannel,
 ): Promise<TextChannel> {
+  await category.guild.channels.fetch();
+
   const existing = category.children.cache.find(
     (c): c is TextChannel =>
       c.type === ChannelType.GuildText && c.name === 'bot-summary',
@@ -94,12 +146,9 @@ export async function ensureSummaryChannel(
     position: 0,
   }) as TextChannel;
 
-  // Keep it pinned to the top of the category after every summary
   try {
     await channel.setPosition(0);
-  } catch {
-    // Non-fatal — bot may lack Manage Channels; summary still posts
-  }
+  } catch { /* non-fatal */ }
 
   return channel;
 }
@@ -110,7 +159,8 @@ export async function findOrCreateChannel(
   category: CategoryChannel | null,
   name: string,
 ): Promise<TextChannel> {
-  // Look inside the category first, then guild-wide
+  if (category) await category.guild.channels.fetch();
+
   const existing = (category?.children.cache ?? guild.channels.cache).find(
     (c): c is TextChannel => c.type === ChannelType.GuildText && c.name === name,
   );
