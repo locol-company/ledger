@@ -53,7 +53,7 @@ Rules:
 - Use "•" (bullet character) for every list item, never "-" or any "#" headings
 - Never add a date line or title — the embed already has one
 - Do not repeat raw messages verbatim, but do not lose any information
-- Language: write in Thai, but keep all proper nouns exactly as they appear in the source — person names, company names, product names, brand names, technical terms, and acronyms must stay in their original language and spelling (e.g. "SPAR6C", "Boymaxwell", "Cash Flow", "MADD", "L/C", "EXIM Bank" stay as-is)`;
+- Language: write in Thai, but NEVER translate, transliterate, or convert any proper noun into Thai script — this includes Discord usernames, person names, company names, product names, brand names, technical terms, and acronyms. They must appear character-for-character exactly as written in the source (e.g. "nontapan" stays "nontapan" not "นงตาปัน", "SPAR6C" stays "SPAR6C", "EXIM Bank" stays "EXIM Bank")`;
 
   const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
     method: 'POST',
@@ -101,7 +101,7 @@ Rules:
 - Use "•" for every bullet, never "-" or any "#" headings
 - Never add a date line or intro paragraph — start directly with the first project
 - Cover all projects, no matter how small their activity
-- Language: write in Thai, but keep all proper nouns exactly as they appear in the source — person names, company names, product names, brand names, technical terms, and acronyms must stay in their original language and spelling`;
+- Language: write in Thai, but NEVER translate, transliterate, or convert any proper noun into Thai script — Discord usernames, person names, company names, product names, brand names, technical terms, and acronyms must appear character-for-character exactly as written in the source`;
 
   const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
     method: 'POST',
