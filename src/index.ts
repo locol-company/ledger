@@ -66,5 +66,11 @@ client.on('interactionCreate', async (interaction: Interaction) => {
   }
 });
 
+client.on('error', (err) => console.error('[discord] Client error:', err.message));
+
+// Keep the process alive for the health server even if Discord disconnects
+process.on('uncaughtException', (err) => console.error('[process] Uncaught exception:', err.message));
+process.on('unhandledRejection', (err) => console.error('[process] Unhandled rejection:', err));
+
 startHealthServer(Number(process.env.HEALTH_PORT) || 3002);
 client.login(process.env.BOT_TOKEN);
