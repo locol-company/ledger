@@ -1,4 +1,4 @@
-import { CategoryChannel, ChannelType, ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { CategoryChannel, ChannelType, ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { BotCommand } from '../../types';
 import { fetchCategoryMessages, ensureSummaryChannel } from '../../utils/messages';
 import { summarizeCategory, ollamaModel } from '../../utils/ollama';
@@ -17,7 +17,7 @@ const command: BotCommand = {
     ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const channel = interaction.channel;
     if (!channel || channel.type !== ChannelType.GuildText) {

@@ -29,6 +29,10 @@ export async function fetchCategoryMessages(
       !SKIP_CHANNEL_NAMES.includes(c.name.toLowerCase()),
   );
 
+  // Debug: log all children regardless of type
+  category.children.cache.forEach((c) =>
+    console.log(`[ledger]   child: #${c.name} type=${c.type}`),
+  );
   console.log(`[ledger] "${category.name}": found ${textChannels.size} text channel(s)`);
 
   for (const [, channel] of textChannels) {
