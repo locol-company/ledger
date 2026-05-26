@@ -46,7 +46,19 @@ const command: BotCommand = {
     }
 
     const summary = await summarizeCategory(category.name, channels, since, now);
-    const summaryChannel = await ensureSummaryChannel(interaction.client, category as CategoryChannel);
+
+    let summaryChannel;
+    try {
+      summaryChannel = await ensureSummaryChannel(interaction.client, category as CategoryChannel);
+    } catch (err: unknown) {
+      const isPermission = err instanceof Error && err.message.includes('Missing Permissions');
+      await interaction.editReply(
+        isPermission
+          ? 'Missing **Manage Channels** permission — either grant it to the ledger role in Server Settings → Roles, or manually create a `#bot-summary` channel in this category.'
+          : `Failed to create #bot-summary: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
 
     const embed = new EmbedBuilder()
       .setTitle(`Summary — ${category.name} (last ${hours}h)`)
