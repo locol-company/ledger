@@ -28,7 +28,7 @@ export async function summarizeCategory(
     })
     .join('\n\n');
 
-  const prompt = `You are a project assistant. Summarize the Discord activity below for the "${categoryName}" project category (${fromStr} → ${toStr} ICT).
+  const prompt = `You are a project assistant. Summarize the Discord activity below for the "${categoryName}" project category (${fromStr} → ${toStr} ICT). Write the entire summary in Thai language.
 
 ${body}
 
@@ -80,7 +80,7 @@ export async function summarizeMaster(
     .map((p) => `### ${p.name}\n${p.summary}`)
     .join('\n\n');
 
-  const prompt = `You are a project assistant writing a cross-project daily overview for an organisation (${fromStr} → ${toStr} ICT).
+  const prompt = `You are a project assistant writing a cross-project daily overview for an organisation (${fromStr} → ${toStr} ICT). Write the entire summary in Thai language.
 
 Below are the individual summaries for each project category:
 
