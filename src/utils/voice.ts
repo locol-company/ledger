@@ -48,6 +48,8 @@ export async function startMeeting(
     throw new Error('A meeting is already recording in this server.');
   }
 
+  console.log(`[meeting] Joining #${voiceChannel.name} (${voiceChannel.id}) in guild ${voiceChannel.guild.id}`);
+
   const connection = joinVoiceChannel({
     channelId: voiceChannel.id,
     guildId: voiceChannel.guild.id,
@@ -57,11 +59,26 @@ export async function startMeeting(
     selfMute: true,
   });
 
+  // Log every state transition to aid debugging
+  for (const status of Object.values(VoiceConnectionStatus)) {
+    connection.on(status as VoiceConnectionStatus, () =>
+      console.log(`[meeting] Voice state → ${status}`),
+    );
+  }
+  connection.on('error', (err: Error) =>
+    console.error('[meeting] Voice connection error:', err.message, err.stack),
+  );
+
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
   } catch {
+    const stuck = connection.state.status;
+    console.error(`[meeting] Timed out — stuck in state: ${stuck}`);
     connection.destroy();
-    throw new Error('Could not connect to the voice channel (timed out after 30s).');
+    throw new Error(
+      `Could not connect to the voice channel (timed out in state: ${stuck}). ` +
+        'Check that the bot has CONNECT permission and that UDP is not blocked by a firewall.',
+    );
   }
 
   const category = voiceChannel.parent;
