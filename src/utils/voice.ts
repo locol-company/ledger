@@ -19,6 +19,11 @@ import { transcribeOpus } from './transcription';
 import { summarizeMeeting, type TranscriptEntry } from './ollama';
 import { ensureMeetingSummaryChannel } from './messages';
 
+// 30 seconds of Opus audio @ 20ms per frame = 1500 packets.
+// Force-flush at this size so a continuous speaker is split into manageable chunks
+// rather than one giant request Whisper has to digest all at once.
+const MAX_CHUNK_PACKETS = 1500;
+
 interface MeetingSession {
   guildId: string;
   voiceChannelId: string;
@@ -29,7 +34,7 @@ interface MeetingSession {
   startTime: Date;
   participants: Map<string, string>; // userId → displayName
   transcript: TranscriptEntry[];
-  activeStreams: Set<string>;
+  pendingTranscriptions: Set<Promise<void>>; // in-flight Whisper calls
   emptyTimer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -66,7 +71,7 @@ export async function startMeeting(
     );
   }
   connection.on('error', (err: Error) =>
-    console.error('[meeting] Voice connection error:', err.message, err.stack),
+    console.error('[meeting] Voice connection error:', err.message),
   );
 
   try {
@@ -77,7 +82,7 @@ export async function startMeeting(
     connection.destroy();
     throw new Error(
       `Could not connect to the voice channel (timed out in state: ${stuck}). ` +
-        'Check that the bot has CONNECT permission and that UDP is not blocked by a firewall.',
+        'Check that the bot has CONNECT permission and that UDP is not blocked.',
     );
   }
 
@@ -92,7 +97,7 @@ export async function startMeeting(
     startTime: new Date(),
     participants: new Map(),
     transcript: [],
-    activeStreams: new Set(),
+    pendingTranscriptions: new Set(),
     emptyTimer: null,
   };
 
@@ -116,10 +121,15 @@ export async function startMeeting(
     }
   });
 
-  // Subscribe to audio as each user begins speaking
-  connection.receiver.speaking.on('start', (userId: string) => {
-    if (session.activeStreams.has(userId)) return;
+  // Track which streams we've already attached listeners to — prevents double-subscribing
+  // if speaking.on('start') fires while a stream for that user is still open.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const configuredStreams = new WeakSet<any>();
 
+  // Subscribe to audio every time a user starts speaking.
+  // NO activeStreams guard — we must never skip a speaking event. Transcriptions
+  // run async in the background so a slow Whisper call never blocks a future utterance.
+  connection.receiver.speaking.on('start', (userId: string) => {
     const member =
       (voiceChannel.members.get(userId) as GuildMember | undefined) ??
       (voiceChannel.guild.members.cache.get(userId) as GuildMember | undefined);
@@ -130,38 +140,65 @@ export async function startMeeting(
       session.participants.set(userId, member.displayName);
     }
 
-    session.activeStreams.add(userId);
-
     const stream = connection.receiver.subscribe(userId, {
-      end: { behavior: EndBehaviorType.AfterSilence, duration: 1000 },
+      end: { behavior: EndBehaviorType.AfterSilence, duration: 500 },
     });
 
-    const packets: Buffer[] = [];
-    const chunkStart = new Date();
+    // If @discordjs/voice returned an already-active stream (rare: user spoke before
+    // their previous stream ended), don't re-attach listeners — they're already there.
+    if (configuredStreams.has(stream)) return;
+    configuredStreams.add(stream);
 
-    stream.on('data', (chunk: Buffer) => packets.push(chunk));
+    let packets: Buffer[] = [];
+    let chunkStart = new Date();
 
-    stream.on('end', async () => {
-      try {
-        if (packets.length >= 5) {
-          const text = await transcribeOpus(packets);
-          if (text.trim()) {
-            session.transcript.push({
-              timestamp: chunkStart,
-              username: member.user.username,
-              displayName: member.displayName,
-              text: text.trim(),
-            });
-            console.log(`[meeting] ${member.displayName}: ${text.trim().slice(0, 80)}`);
-          }
-        }
-      } catch (err) {
-        console.error('[meeting] Transcription error:', err);
-      } finally {
-        session.activeStreams.delete(userId);
+    stream.on('data', (chunk: Buffer) => {
+      packets.push(chunk);
+
+      // Force-flush every 30 s so we never build a giant single Whisper request.
+      if (packets.length >= MAX_CHUNK_PACKETS) {
+        const batch = packets;
+        const ts = chunkStart;
+        packets = [];
+        chunkStart = new Date();
+        flushTranscription(session, batch, ts, member);
+      }
+    });
+
+    stream.on('end', () => {
+      if (packets.length >= 5) {
+        flushTranscription(session, packets, chunkStart, member);
       }
     });
   });
+}
+
+// Fire-and-forget transcription; tracked in session.pendingTranscriptions so
+// endMeeting can wait for all of them before posting results.
+function flushTranscription(
+  session: MeetingSession,
+  packets: Buffer[],
+  startTime: Date,
+  member: GuildMember,
+): void {
+  const p = (async () => {
+    const text = await transcribeOpus(packets);
+    const trimmed = text.trim();
+    if (trimmed) {
+      session.transcript.push({
+        timestamp: startTime,
+        username: member.user.username,
+        displayName: member.displayName,
+        text: trimmed,
+      });
+      // Sort by timestamp so interleaved speech ends up in the right order
+      session.transcript.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      console.log(`[meeting] ${member.displayName}: ${trimmed.slice(0, 80)}`);
+    }
+  })().catch((err) => console.error(`[meeting] Transcription error (${member.displayName}):`, err));
+
+  session.pendingTranscriptions.add(p);
+  p.finally(() => session.pendingTranscriptions.delete(p));
 }
 
 export async function endMeeting(
@@ -172,18 +209,21 @@ export async function endMeeting(
   const session = sessions.get(guildId);
   if (!session) return;
 
-  // Remove session immediately to prevent duplicate end calls
   sessions.delete(guildId);
   if (session.emptyTimer) clearTimeout(session.emptyTimer);
 
-  // Disconnect from voice (this will end all active audio streams)
+  // Disconnect from voice — this triggers stream 'end' events for any live streams,
+  // which will queue their final packets as pending transcriptions.
   const connection = getVoiceConnection(guildId);
   connection?.destroy();
 
-  // Wait for in-flight transcriptions to finish (max 30s)
-  const deadline = Date.now() + 30_000;
-  while (session.activeStreams.size > 0 && Date.now() < deadline) {
-    await new Promise<void>((r) => setTimeout(r, 500));
+  // Wait for every in-flight Whisper call to finish (up to 2 minutes).
+  if (session.pendingTranscriptions.size > 0) {
+    console.log(`[meeting] Waiting for ${session.pendingTranscriptions.size} pending transcription(s)…`);
+    await Promise.race([
+      Promise.allSettled([...session.pendingTranscriptions]),
+      new Promise<void>((r) => setTimeout(r, 120_000)),
+    ]);
   }
 
   const endTime = new Date();
@@ -191,12 +231,13 @@ export async function endMeeting(
   if (!guild) return;
 
   const textChannel = guild.channels.cache.get(session.textChannelId) as TextChannel | null;
-
-  const endMsg =
-    reason === 'auto'
-      ? '🛑 Meeting ended automatically — channel was empty for 5 minutes.'
-      : '🛑 Meeting ended.';
-  await textChannel?.send(endMsg).catch(() => null);
+  await textChannel
+    ?.send(
+      reason === 'auto'
+        ? '🛑 Meeting ended automatically — channel was empty for 5 minutes.'
+        : '🛑 Meeting ended.',
+    )
+    .catch(() => null);
 
   // Find or create #bot-meeting-summary in the same category
   let summaryChannel: TextChannel;
@@ -297,8 +338,6 @@ export function handleVoiceStateUpdate(
     clearTimeout(session.emptyTimer);
     session.emptyTimer = null;
     console.log('[meeting] Channel has members again — cancelled auto-end timer');
-
-    // Track newly rejoined participant
     const rejoined = newState.member;
     if (rejoined && !rejoined.user.bot) {
       session.participants.set(rejoined.id, rejoined.displayName);
