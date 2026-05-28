@@ -70,5 +70,21 @@ async function callWhisper(wav: Buffer): Promise<string> {
   }
 
   const data = (await res.json()) as { text?: string };
-  return data.text ?? '';
+  return filterHallucinations(data.text ?? '');
+}
+
+// Whisper hallucinates these phrases on near-silence or very short audio.
+// Strip them so they don't pollute the transcript.
+const HALLUCINATION_PATTERNS = [
+  /โปรดติดตามตอนต่อไป/g,
+  /ขอบคุณที่รับชม/g,
+  /ติดตามได้ที่/g,
+  /กดติดตาม/g,
+  /สมัครสมาชิก/g,
+];
+
+function filterHallucinations(text: string): string {
+  let out = text;
+  for (const pattern of HALLUCINATION_PATTERNS) out = out.replace(pattern, '');
+  return out.trim();
 }

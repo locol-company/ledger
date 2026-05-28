@@ -1,6 +1,6 @@
 {
   "name": "ledger",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "type": "module",
   "description": "Discord bot that summarizes daily activity per category using Ollama",
   "scripts": {
