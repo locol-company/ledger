@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Client, Collection, GatewayIntentBits, Interaction, REST, Routes } from 'discord.js';
+import { handleVoiceStateUpdate } from './utils/voice';
 import { BotCommand } from './types';
 import { startHealthServer } from './health';
 import { startScheduler } from './utils/scheduler';
@@ -15,6 +16,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
   ],
 });
 
@@ -64,6 +66,10 @@ client.on('interactionCreate', async (interaction: Interaction) => {
       await interaction.reply(msg);
     }
   }
+});
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+  handleVoiceStateUpdate(client, oldState, newState);
 });
 
 client.on('error', (err) => console.error('[discord] Client error:', err.message));

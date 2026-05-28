@@ -8,11 +8,40 @@ import {
   Message,
   TextChannel,
 } from 'discord.js';
+
+export async function ensureMeetingSummaryChannel(
+  guild: Guild,
+  category: CategoryChannel | null,
+): Promise<TextChannel> {
+  if (category) await category.guild.channels.fetch();
+  else await guild.channels.fetch();
+
+  const searchIn = category?.children.cache ?? guild.channels.cache;
+  const existing = searchIn.find(
+    (c): c is TextChannel =>
+      c.type === ChannelType.GuildText && c.name === 'bot-meeting-summary',
+  );
+
+  if (existing) {
+    try { await existing.setPosition(0); } catch { /* non-fatal */ }
+    return existing;
+  }
+
+  const created = await guild.channels.create({
+    name: 'bot-meeting-summary',
+    type: ChannelType.GuildText,
+    ...(category ? { parent: category.id } : {}),
+    topic: 'AI-generated meeting summaries and raw transcripts',
+    position: 0,
+  }) as TextChannel;
+
+  return created;
+}
 import { ChannelMessages } from './ollama';
 
 const MAX_MESSAGES_PER_CHANNEL = 300;
 // Only skip the summary channel itself — all other channels (including #general) are read
-const SKIP_CHANNEL_NAMES = ['bot-summary'];
+const SKIP_CHANNEL_NAMES = ['bot-summary', 'bot-meeting-summary'];
 
 export async function fetchCategoryMessages(
   category: CategoryChannel,

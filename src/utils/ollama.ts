@@ -131,3 +131,63 @@ function formatICT(date: Date): string {
 export function ollamaModel(): string {
   return OLLAMA_MODEL;
 }
+
+export interface TranscriptEntry {
+  timestamp: Date;
+  username: string;
+  displayName: string;
+  text: string;
+}
+
+export async function summarizeMeeting(
+  transcript: TranscriptEntry[],
+  participants: Map<string, string>,
+  fromTime: Date,
+  toTime: Date,
+): Promise<string> {
+  const fromStr = formatICT(fromTime);
+  const toStr = formatICT(toTime);
+  const participantList = [...participants.values()].join(', ');
+
+  const lines = transcript
+    .map((e) => `[${formatICT(e.timestamp)}] ${e.displayName}: ${e.text}`)
+    .join('\n');
+
+  const prompt = `You are a meeting assistant. Summarize the following meeting transcript (${fromStr} → ${toStr} ICT). Write the entire summary in Thai language.
+
+Participants: ${participantList}
+
+Transcript:
+${lines}
+
+Write a meeting summary using EXACTLY this format (no deviations):
+
+**สิ่งที่หารือ**
+• bullet point
+• bullet point
+
+**มติ / การตัดสินใจ**
+• bullet point
+• (write "• ไม่มี" if none)
+
+**Action Items**
+• bullet point
+• (write "• ไม่มี" if none)
+
+Rules:
+- Cover ALL topics discussed — do not omit anything
+- Use "•" (bullet character) for every list item, never "-" or any "#" headings
+- Never add a date line or title
+- Language: write in Thai, but NEVER translate, transliterate, or convert any proper noun into Thai script — Discord usernames, person names, company names, product names, technical terms must appear exactly as in the source`;
+
+  const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false }),
+  });
+
+  if (!res.ok) throw new Error(`Ollama error: ${res.status} ${await res.text()}`);
+
+  const data = (await res.json()) as { response: string };
+  return data.response.trim();
+}
