@@ -153,7 +153,9 @@ export async function summarizeMeeting(
     .map((e) => `[${formatICT(e.timestamp)}] ${e.displayName}: ${e.text}`)
     .join('\n');
 
-  const prompt = `You are a meeting assistant. Summarize the following meeting transcript (${fromStr} → ${toStr} ICT). Write the entire summary in Thai language.
+  const system = `You are a meeting assistant. You write ONLY in Thai (ภาษาไทย) and English (for technical terms). You MUST NEVER output Chinese characters (汉字/漢字) — not even a single one. If you catch yourself thinking in Chinese, silently translate to Thai before writing. Violating this rule means your response is rejected.`;
+
+  const user = `Summarize the following meeting transcript (${fromStr} → ${toStr} ICT).
 
 Participants: ${participantList}
 
@@ -177,17 +179,25 @@ Write a meeting summary using EXACTLY this format (no deviations):
 Rules:
 - Cover ALL topics discussed — do not omit anything
 - Use "•" (bullet character) for every list item, never "-" or any "#" headings
-- Never add a date line or title
-- Language: write in Thai, but NEVER translate, transliterate, or convert any proper noun into Thai script — Discord usernames, person names, company names, product names, technical terms must appear exactly as in the source`;
+- Never add a date line, title, or preamble — start directly with **สิ่งที่หารือ**
+- Output language: Thai only. NEVER output Chinese characters under any circumstances.
+- Proper nouns (usernames, product names, technical terms) must appear exactly as in the source — do not transliterate into Thai script`;
 
-  const res = await fetch(`${OLLAMA_HOST}/api/generate`, {
+  const res = await fetch(`${OLLAMA_HOST}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false }),
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      stream: false,
+    }),
   });
 
   if (!res.ok) throw new Error(`Ollama error: ${res.status} ${await res.text()}`);
 
-  const data = (await res.json()) as { response: string };
-  return data.response.trim();
+  const data = (await res.json()) as { message?: { content: string }; response?: string };
+  return (data.message?.content ?? data.response ?? '').trim();
 }

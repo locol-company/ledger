@@ -7,7 +7,7 @@ const WHISPER_URL = process.env.WHISPER_URL ?? 'https://api.openai.com/v1/audio/
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? '';
 
 export async function transcribeOpus(packets: Buffer[]): Promise<string> {
-  if (packets.length < 5) return '';
+  if (packets.length < 20) return '';
 
   const decoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.AUDIO);
   const pcmChunks: Buffer[] = [];

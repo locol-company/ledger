@@ -166,7 +166,7 @@ export async function startMeeting(
     });
 
     stream.on('end', () => {
-      if (packets.length >= 5) {
+      if (packets.length >= 20) {
         flushTranscription(session, packets, chunkStart, member);
       }
     });
